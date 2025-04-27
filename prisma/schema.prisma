@@ -1,0 +1,263 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 Int                @id @default(autoincrement())
+  email              String             @unique
+  password_hash      String?
+  first_name         String?
+  last_name          String?
+  created_at         DateTime           @default(now())
+  updated_at         DateTime           @updatedAt
+  email_verified     Boolean            @default(false)
+  profile_image      String?
+  phone_number       String?
+  balance            Decimal            @default(0) @db.Decimal(20, 8)
+  
+  // Relations
+  user_roles         UserRole[]
+  admin              Admin?
+  issuer             Issuer?
+  investor           Investor?
+  auth_providers     AuthProvider[]
+  did_wallets        DIDWallet[]
+  refresh_tokens     RefreshToken[]
+  market_orders      MarketOrder[]
+  user_tokens        UserToken[]
+  transactions_as_buyer   MarketTransaction[]  @relation("BuyerTransactions")
+  transactions_as_seller  MarketTransaction[]  @relation("SellerTransactions")
+}
+
+model UserRole {
+  id                 Int                @id @default(autoincrement())
+  user_id            Int
+  role               String // "admin", "issuer", "investor"
+  created_at         DateTime           @default(now())
+  
+  // Relations
+  user               User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@index([user_id])
+}
+
+model Admin {
+  id                 Int                @id @default(autoincrement())
+  user_id            Int                @unique
+  department         String?
+  position           String?
+  last_login         DateTime?
+  
+  // Relations
+  user               User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model Issuer {
+  id                           Int                @id @default(autoincrement())
+  user_id                      Int                @unique
+  company_name                 String?
+  company_registration_number  String?
+  jurisdiction                 String?
+  verification_status          Boolean            @default(false)
+  verification_date            DateTime?
+  company_documents            Json?
+  
+  // Relations
+  user                         User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  tokens                       Token[]
+}
+
+model Investor {
+  id                 Int                @id @default(autoincrement())
+  user_id            Int                @unique
+  investor_type      String?            // "individual", "institutional"
+  accreditation_status String?
+  accreditation_date  DateTime?
+  kyc_documents      Json?
+  aml_documents      Json?
+  kyc_verified       Boolean            @default(false)
+  aml_verified       Boolean            @default(false)
+  
+  // Relations
+  user               User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  investments        Investment[]
+}
+
+model AuthProvider {
+  id                 Int                @id @default(autoincrement())
+  user_id            Int
+  provider_name      String             // "google", "twitter", "apple"
+  provider_user_id   String
+  provider_data      Json?
+  created_at         DateTime           @default(now())
+  last_used          DateTime?
+  
+  // Relations
+  user               User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@unique([provider_name, provider_user_id])
+  @@index([user_id])
+}
+
+model DIDWallet {
+  id                 Int                @id @default(autoincrement())
+  user_id            Int
+  wallet_address     String             @unique
+  did                String?
+  is_primary         Boolean            @default(false)
+  created_at         DateTime           @default(now())
+  last_used          DateTime?
+  
+  // Relations
+  user               User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@index([user_id])
+}
+
+model RefreshToken {
+  id                 Int                @id @default(autoincrement())
+  user_id            Int
+  token              String             @unique
+  expires_at         DateTime
+  created_at         DateTime           @default(now())
+  device_info        String?
+  
+  // Relations
+  user               User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@index([user_id])
+}
+
+model Token {
+  id                 Int                @id @default(autoincrement())
+  issuer_id          Int
+  name               String
+  symbol             String
+  description        String?            @db.Text
+  asset_type         String
+  token_standard     String             // "ERC20", "ERC721", etc.
+  total_supply       Decimal            @db.Decimal(20, 8)
+  price_per_token    Decimal            @db.Decimal(20, 8)
+  chain_id           Int
+  contract_address   String?
+  token_uri          String?
+  metadata_uri       String?
+  image_url          String?            // URL to token image
+  creation_date      DateTime           @default(now())
+  status             String             // "draft", "pending", "approved", "rejected", "live"
+  legal_documents    Json?
+  
+  // Relations
+  issuer             Issuer             @relation(fields: [issuer_id], references: [id])
+  investments        Investment[]
+  market_orders      MarketOrder[]
+  user_balances      UserToken[]
+  market_transactions MarketTransaction[]
+  
+  @@index([issuer_id])
+}
+
+model Investment {
+  id                 Int                @id @default(autoincrement())
+  investor_id        Int
+  token_id           Int
+  amount             Decimal            @db.Decimal(20, 8)
+  price_per_token    Decimal            @db.Decimal(20, 8)
+  transaction_hash   String?
+  investment_date    DateTime           @default(now())
+  status             String             // "pending", "completed", "failed"
+  
+  // Relations
+  investor           Investor           @relation(fields: [investor_id], references: [id])
+  token              Token              @relation(fields: [token_id], references: [id])
+  
+  @@index([investor_id])
+  @@index([token_id])
+}
+
+model KycVerification {
+  id                 Int                @id @default(autoincrement())
+  user_id            Int                @unique
+  onfido_applicant_id String?
+  onfido_check_id    String?
+  status             String             // "pending", "approved", "rejected"
+  verification_date  DateTime?
+  rejection_reason   String?
+  documents          Json?
+  soulbound_nft_id   String?
+  soulbound_nft_uri  String?
+  
+  @@index([user_id])
+}
+
+model UserToken {
+  id                 Int                @id @default(autoincrement())
+  user_id            Int
+  token_id           Int
+  balance            Decimal            @db.Decimal(20, 8)
+  locked_balance     Decimal            @default(0) @db.Decimal(20, 8)
+  last_updated       DateTime           @updatedAt
+  
+  // Relations
+  user               User               @relation(fields: [user_id], references: [id])
+  token              Token              @relation(fields: [token_id], references: [id])
+  
+  @@unique([user_id, token_id])
+  @@index([user_id])
+  @@index([token_id])
+}
+
+model MarketOrder {
+  id                 Int                @id @default(autoincrement())
+  user_id            Int
+  token_id           Int
+  order_type         String             // "buy", "sell"
+  quantity           Decimal            @db.Decimal(20, 8)
+  remaining_quantity Decimal            @db.Decimal(20, 8)
+  price              Decimal            @db.Decimal(20, 8)
+  status             String             // "open", "partially_filled", "filled", "cancelled"
+  created_at         DateTime           @default(now())
+  expires_at         DateTime?
+  
+  // Relations
+  user               User               @relation(fields: [user_id], references: [id])
+  token              Token              @relation(fields: [token_id], references: [id])
+  transactions       MarketTransaction[] @relation("OrderTransactions")
+  
+  @@index([user_id])
+  @@index([token_id])
+  @@index([status])
+}
+
+model MarketTransaction {
+  id                 Int                @id @default(autoincrement())
+  order_id           Int
+  token_id           Int
+  buyer_id           Int
+  seller_id          Int
+  quantity           Decimal            @db.Decimal(20, 8)
+  price              Decimal            @db.Decimal(20, 8)
+  fee                Decimal            @default(0) @db.Decimal(20, 8)
+  timestamp          DateTime           @default(now())
+  transaction_hash   String?
+  status             String             // "pending", "completed", "failed"
+  
+  // Relations
+  order              MarketOrder        @relation("OrderTransactions", fields: [order_id], references: [id])
+  token              Token              @relation(fields: [token_id], references: [id])
+  buyer              User               @relation("BuyerTransactions", fields: [buyer_id], references: [id])
+  seller             User               @relation("SellerTransactions", fields: [seller_id], references: [id])
+  
+  @@index([order_id])
+  @@index([token_id])
+  @@index([buyer_id])
+  @@index([seller_id])
+}
